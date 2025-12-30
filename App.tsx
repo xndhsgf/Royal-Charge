@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   collection, 
   doc, 
@@ -8,7 +8,6 @@ import {
   getDoc, 
   updateDoc, 
   addDoc, 
-  deleteDoc,
   query, 
   orderBy,
   where
@@ -68,34 +67,36 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [cartItems, setCartItems] = useState<Product[]>([]);
 
-  // مزامنة الإعدادات العامة
+  // 1. مزامنة الإعدادات العامة
   useEffect(() => {
-    return onSnapshot(doc(db, "settings", "appConfig"), (docSnap) => {
-      if (docSnap.exists()) setAppConfig(docSnap.data() as AppConfig);
+    const unsub = onSnapshot(doc(db, "settings", "appConfig"), (docSnap) => {
+      if (docSnap.exists()) {
+        setAppConfig(docSnap.data() as AppConfig);
+      }
     });
+    return () => unsub();
   }, []);
 
-  // مزامنة المنتجات والأقسام وطرق الشحن
+  // 2. مزامنة المنتجات والأقسام
   useEffect(() => {
     const unsubProds = onSnapshot(collection(db, "products"), (snap) => {
-      setProducts(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
+      const prods: Product[] = [];
+      snap.forEach(doc => prods.push({ ...doc.data(), id: doc.id } as any));
+      setProducts(prods);
     });
     const unsubCats = onSnapshot(collection(db, "categories"), (snap) => {
-      const cats = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
+      const cats: Category[] = [];
+      snap.forEach(doc => cats.push({ ...doc.data(), id: doc.id } as any));
       if (cats.length > 0) setCategories(cats);
     });
-    const unsubMethods = onSnapshot(collection(db, "rechargeMethods"), (snap) => {
-      const methods = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
-      if (methods.length > 0) setRechargeMethods(methods);
-    });
-    return () => { unsubProds(); unsubCats(); unsubMethods(); };
+    return () => { unsubProds(); unsubCats(); };
   }, []);
 
-  // مزامنة بيانات المستخدم والطلبات
+  // 3. مزامنة البيانات بناءً على هوية المستخدم
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user || !user.email) return;
 
-    const unsubUser = onSnapshot(doc(db, "users", user.email.toLowerCase()), (docSnap) => {
+    const unsubUser = onSnapshot(doc(db, "users", user.email), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserState;
         setUser(data);
@@ -107,15 +108,21 @@ const App: React.FC = () => {
     if (user.isAdmin) {
       const q = query(collection(db, "orders"), orderBy("date", "desc"));
       unsubOrders = onSnapshot(q, (snap) => {
-        setOrders(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
+        const ords: Order[] = [];
+        snap.forEach(doc => ords.push({ ...doc.data(), id: doc.id } as any));
+        setOrders(ords);
       });
       onSnapshot(collection(db, "users"), (snap) => {
-        setAllUsers(snap.docs.map(doc => doc.data() as UserState));
+        const usrs: UserState[] = [];
+        snap.forEach(doc => usrs.push(doc.data() as UserState));
+        setAllUsers(usrs);
       });
     } else {
-      const q = query(collection(db, "orders"), where("userId", "==", user.email.toLowerCase()), orderBy("date", "desc"));
+      const q = query(collection(db, "orders"), where("userId", "==", user.email), orderBy("date", "desc"));
       unsubOrders = onSnapshot(q, (snap) => {
-        setOrders(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
+        const ords: Order[] = [];
+        snap.forEach(doc => ords.push({ ...doc.data(), id: doc.id } as any));
+        setOrders(ords);
       });
     }
 
@@ -123,13 +130,12 @@ const App: React.FC = () => {
   }, [user?.email, user?.isAdmin]);
 
   const handleLogin = async (email: string, password: string, extraData?: Partial<UserState>, isSignup?: boolean) => {
-    const cleanEmail = email.toLowerCase().trim();
-    const isAdminCredentials = cleanEmail === 'admin@royal.com' && password === 'admin123456';
-    const userRef = doc(db, "users", cleanEmail);
-
     try {
+      const userRef = doc(db, "users", email);
       const userSnap = await getDoc(userRef);
-      
+
+      const isAdminCredentials = email === 'admin@royal.com' && password === 'admin123456';
+
       if (isSignup) {
         if (userSnap.exists()) {
           alert("البريد الإلكتروني مسجل مسبقاً");
@@ -137,7 +143,7 @@ const App: React.FC = () => {
         }
         const newUser = {
           name: extraData?.name || 'مستخدم جديد',
-          email: cleanEmail,
+          email: email,
           id: Math.floor(1000 + Math.random() * 9000).toString(),
           profilePic: extraData?.profilePic || 'https://picsum.photos/seed/user/200',
           country: extraData?.country || 'مصر 🇪🇬',
@@ -154,11 +160,10 @@ const App: React.FC = () => {
         setUser(newUser as any);
         localStorage.setItem('royal_user', JSON.stringify(newUser));
       } else {
-        // حالة خاصة لإنشاء حساب المدير إذا لم يكن موجوداً
         if (!userSnap.exists() && isAdminCredentials) {
           const adminUser = {
             name: 'المدير العام',
-            email: cleanEmail,
+            email: email,
             id: 'ADMIN',
             profilePic: 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png',
             country: 'إدارة النظام ⚡',
@@ -188,7 +193,6 @@ const App: React.FC = () => {
           return;
         }
 
-        // تحديث حالة الأدمن إذا لزم الأمر
         if (isAdminCredentials && !userData.isAdmin) {
           await updateDoc(userRef, { isAdmin: true });
           userData.isAdmin = true;
@@ -198,19 +202,19 @@ const App: React.FC = () => {
         localStorage.setItem('royal_user', JSON.stringify(userData));
       }
     } catch (e) {
-      console.error("Login Error:", e);
-      alert("فشل الاتصال بقاعدة البيانات. تأكد من الإنترنت.");
+      console.error(e);
+      alert("خطأ في قاعدة البيانات، يرجى المحاولة لاحقاً");
     }
   };
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = () => {
     if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
       setUser(null);
       localStorage.removeItem('royal_user');
       setIsSidebarOpen(false);
       setCurrentView('home');
     }
-  }, []);
+  };
 
   const handlePurchase = async (product: Product, idValue: string, customPriceUSD?: number, coins?: number) => {
     if (!user) return false;
@@ -221,7 +225,7 @@ const App: React.FC = () => {
     }
 
     try {
-      await updateDoc(doc(db, "users", user.email.toLowerCase()), { balanceUSD: user.balanceUSD - finalPrice });
+      await updateDoc(doc(db, "users", user.email), { balanceUSD: user.balanceUSD - finalPrice });
       await addDoc(collection(db, "orders"), {
         productName: product.name,
         priceUSD: finalPrice,
@@ -230,7 +234,7 @@ const App: React.FC = () => {
         date: new Date().toISOString(),
         status: 'pending',
         playerId: idValue,
-        userId: user.email.toLowerCase(),
+        userId: user.email,
         type: 'product'
       });
       alert('تم إرسال الطلب');
@@ -247,7 +251,7 @@ const App: React.FC = () => {
       date: new Date().toISOString(),
       status: 'pending',
       type: 'recharge',
-      userId: user.email.toLowerCase(),
+      userId: user.email,
       playerId: pId,
       screenshot: img || null,
       details: { senderName: sender }
@@ -265,27 +269,15 @@ const App: React.FC = () => {
     await updateDoc(orderRef, { status, adminReply: reply });
 
     if (status === 'completed' && orderData.type === 'recharge') {
-      const uRef = doc(db, "users", orderData.userId.toLowerCase());
+      const uRef = doc(db, "users", orderData.userId);
       const uSnap = await getDoc(uRef);
       if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
     } else if (status === 'rejected' && orderData.type === 'product') {
-      const uRef = doc(db, "users", orderData.userId.toLowerCase());
+      const uRef = doc(db, "users", orderData.userId);
       const uSnap = await getDoc(uRef);
       if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
     }
   };
-
-  const updateProduct = async (id: any, data: any) => {
-    if (typeof id === 'string') await updateDoc(doc(db, "products", id), data);
-    else await addDoc(collection(db, "products"), data);
-  };
-  const deleteProduct = async (id: any) => await deleteDoc(doc(db, "products", id));
-  const addCategory = async (data: any) => await addDoc(collection(db, "categories"), data);
-  const deleteCategory = async (id: any) => await deleteDoc(doc(db, "categories", id));
-  const addRechargeMethod = async (data: any) => await addDoc(collection(db, "rechargeMethods"), data);
-  const deleteRechargeMethod = async (id: any) => await deleteDoc(doc(db, "rechargeMethods", id));
-  const updateAnyUser = async (email: string, data: any) => await updateDoc(doc(db, "users", email.toLowerCase()), data);
-  const deleteAnyUser = async (email: string) => await deleteDoc(doc(db, "users", email.toLowerCase()));
 
   if (!user) {
     return <LoginView onLogin={handleLogin} appName={appConfig.appName} logoUrl={appConfig.logoUrl} />;
@@ -303,14 +295,14 @@ const App: React.FC = () => {
         {currentView === 'recharge_details' && selectedRechargeMethod && <RechargeDetailsView method={selectedRechargeMethod} onConfirm={handleRechargeRequest} />}
         {currentView === 'search' && <SearchView products={products} onPurchase={handlePurchase} appConfig={appConfig} />}
         {currentView === 'cart' && <CartView cartItems={cartItems} setCartItems={setCartItems} onCheckout={(p) => { setSelectedProductForPurchase(p); setIsPurchaseModalOpen(true); }} appConfig={appConfig} />}
-        {currentView === 'profile_edit' && <ProfileEditView user={user} setUser={(u) => updateDoc(doc(db, "users", user.email.toLowerCase()), u)} onBack={() => setCurrentView('home')} />}
+        {currentView === 'profile_edit' && <ProfileEditView user={user} setUser={(u) => updateDoc(doc(db, "users", user.email), u)} onBack={() => setCurrentView('home')} />}
         {currentView === 'admin' && (
            <AdminView 
-             products={products} setProducts={updateProduct as any} deleteProduct={deleteProduct}
-             categories={categories} addCategory={addCategory} deleteCategory={deleteCategory}
-             rechargeMethods={rechargeMethods} addRechargeMethod={addRechargeMethod} deleteRechargeMethod={deleteRechargeMethod}
+             products={products} setProducts={() => {}} 
+             categories={categories} setCategories={() => {}}
+             rechargeMethods={rechargeMethods} setRechargeMethods={() => {}}
              orders={orders} setOrders={() => {}}
-             allUsers={allUsers} updateAnyUser={updateAnyUser} deleteAnyUser={deleteAnyUser}
+             allUsers={allUsers} setAllUsers={() => {}}
              currentUser={user} setCurrentUser={setUser}
              appConfig={appConfig} setAppConfig={(cfg) => setDoc(doc(db, "settings", "appConfig"), cfg)}
              onBack={() => setCurrentView('home')}
