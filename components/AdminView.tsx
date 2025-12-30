@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   ArrowRight, Package, ShoppingCart, LayoutGrid, Settings, 
-  Users, ShieldAlert, BarChart3, CreditCard
+  Users, ShieldAlert, BarChart3, CreditCard, ShieldCheck
 } from 'lucide-react';
 import { Product, Category, AppConfig, Order, UserState, RechargeMethod } from '../types';
 
@@ -14,6 +14,7 @@ import UsersTab from './admin/UsersTab';
 import SettingsTab from './admin/SettingsTab';
 import StatsTab from './admin/StatsTab';
 import RechargeMethodsTab from './admin/RechargeMethodsTab';
+import AdminsTab from './admin/AdminsTab';
 
 interface AdminViewProps {
   products: Product[];
@@ -37,7 +38,7 @@ interface AdminViewProps {
 }
 
 const AdminView: React.FC<AdminViewProps> = (props) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'products' | 'categories' | 'orders' | 'users' | 'settings' | 'recharge_methods'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'products' | 'categories' | 'orders' | 'users' | 'settings' | 'recharge_methods' | 'admins'>('stats');
 
   const tabs = [
     { id: 'stats', label: 'الرئيسية', icon: <BarChart3 size={18} /> },
@@ -45,6 +46,7 @@ const AdminView: React.FC<AdminViewProps> = (props) => {
     { id: 'products', label: 'المنتجات', icon: <Package size={18} /> },
     { id: 'categories', label: 'الأقسام', icon: <LayoutGrid size={18} /> },
     { id: 'recharge_methods', label: 'طرق الشحن', icon: <CreditCard size={18} /> },
+    { id: 'admins', label: 'المشرفين', icon: <ShieldCheck size={18} /> },
     { id: 'users', label: 'الأعضاء', icon: <Users size={18} /> },
     { id: 'settings', label: 'الإعدادات', icon: <Settings size={18} /> },
   ];
@@ -105,6 +107,10 @@ const AdminView: React.FC<AdminViewProps> = (props) => {
             setRechargeMethod={props.setRechargeMethod} 
             deleteRechargeMethod={props.deleteRechargeMethod} 
           />
+        )}
+
+        {activeTab === 'admins' && (
+          <AdminsTab allUsers={props.allUsers} updateAnyUser={props.updateAnyUser} deleteAnyUser={props.deleteAnyUser} />
         )}
 
         {activeTab === 'users' && (

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserX, Wallet, UserCheck, Trash2, RotateCcw, Search, ShieldAlert, Mail, X, PlusCircle, DollarSign } from 'lucide-react';
+import { UserX, Wallet, UserCheck, Trash2, RotateCcw, Search, ShieldAlert, Mail, X, PlusCircle, DollarSign, ShieldCheck } from 'lucide-react';
 import { UserState } from '../../types';
 
 interface UsersTabProps {
@@ -24,6 +24,10 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
   );
 
   const handleBlock = async (user: UserState) => {
+    if (user.email === 'admin@royal.com') {
+      alert('لا يمكن حظر حساب المدير العام الرئيسي!');
+      return;
+    }
     const action = user.isBlocked ? 'إلغاء حظر' : 'حظر';
     if (confirm(`هل أنت متأكد من ${action} المستخدم ${user.name}؟`)) {
       await updateAnyUser(user.email, { isBlocked: !user.isBlocked });
@@ -32,6 +36,10 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
   };
 
   const handleDelete = async (user: UserState) => {
+    if (user.email === 'admin@royal.com') {
+      alert('⚠️ خطر: لا يمكن حذف حساب المدير العام الرئيسي نهائياً.');
+      return;
+    }
     if (confirm(`⚠️ تحذير: هل أنت متأكد من حذف حساب ${user.name} نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`)) {
       await deleteAnyUser(user.email);
       alert('تم حذف الحساب نهائياً ✅');
@@ -80,14 +88,21 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
 
       <div className="space-y-4">
         {filtered.length > 0 ? filtered.map(u => (
-          <div key={u.email} className={`bg-white p-5 rounded-[2.5rem] shadow-sm border ${u.isBlocked ? 'border-red-100 bg-red-50/20' : 'border-slate-100'} transition-all hover:shadow-md`}>
+          <div key={u.email} className={`bg-white p-5 rounded-[2.5rem] shadow-sm border ${u.isBlocked ? 'border-red-100 bg-red-50/20' : u.email === 'admin@royal.com' ? 'border-amber-200 shadow-md' : 'border-slate-100'} transition-all hover:shadow-md relative`}>
+            
+            {u.email === 'admin@royal.com' && (
+              <div className="absolute top-4 left-4 text-amber-500 animate-pulse">
+                <ShieldCheck size={20} />
+              </div>
+            )}
+
             {/* معلومات العضو */}
             <div className="flex items-center justify-between mb-5 border-b border-slate-50 pb-4">
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <img 
                     src={u.profilePic || 'https://picsum.photos/seed/user/200'} 
-                    className={`w-14 h-14 rounded-2xl object-cover border-2 ${u.isBlocked ? 'border-red-400' : 'border-slate-100 shadow-sm'}`} 
+                    className={`w-14 h-14 rounded-2xl object-cover border-2 ${u.isBlocked ? 'border-red-400' : u.email === 'admin@royal.com' ? 'border-amber-400 shadow-lg shadow-amber-200/50' : 'border-slate-100 shadow-sm'}`} 
                     alt={u.name} 
                   />
                   {u.isBlocked && (
@@ -105,6 +120,9 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
                     <Mail size={10} />
                     <span className="text-[10px] font-bold">{u.email}</span>
                   </div>
+                  {u.email === 'admin@royal.com' && (
+                    <span className="inline-block mt-1 px-2 py-0.5 bg-amber-100 text-amber-600 rounded-full text-[8px] font-black uppercase">المدير العام الرئيسي</span>
+                  )}
                 </div>
               </div>
               <div className="text-left bg-slate-50 px-4 py-2 rounded-2xl border border-slate-100">
@@ -125,7 +143,8 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
 
               <button 
                 onClick={() => handleResetBalance(u)}
-                className="flex flex-col items-center justify-center gap-1 py-3 bg-amber-50 text-amber-600 rounded-2xl hover:bg-amber-100 active:scale-90 transition-all border border-amber-100"
+                disabled={u.email === 'admin@royal.com'}
+                className={`flex flex-col items-center justify-center gap-1 py-3 bg-amber-50 text-amber-600 rounded-2xl hover:bg-amber-100 active:scale-90 transition-all border border-amber-100 ${u.email === 'admin@royal.com' ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}
               >
                 <RotateCcw size={18} />
                 <span className="text-[9px] font-black uppercase">تصفير</span>
@@ -133,7 +152,8 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
 
               <button 
                 onClick={() => handleBlock(u)}
-                className={`flex flex-col items-center justify-center gap-1 py-3 rounded-2xl active:scale-90 transition-all border ${u.isBlocked ? 'bg-slate-900 text-yellow-400 border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-100'}`}
+                disabled={u.email === 'admin@royal.com'}
+                className={`flex flex-col items-center justify-center gap-1 py-3 rounded-2xl active:scale-90 transition-all border ${u.email === 'admin@royal.com' ? 'bg-slate-50 text-slate-200 border-slate-100 cursor-not-allowed' : (u.isBlocked ? 'bg-slate-900 text-yellow-400 border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-100')}`}
               >
                 {u.isBlocked ? <UserCheck size={18} /> : <UserX size={18} />}
                 <span className="text-[9px] font-black uppercase">{u.isBlocked ? 'فك حظر' : 'حظر'}</span>
@@ -141,7 +161,8 @@ const UsersTab: React.FC<UsersTabProps> = ({ allUsers, updateAnyUser, deleteAnyU
 
               <button 
                 onClick={() => handleDelete(u)}
-                className="flex flex-col items-center justify-center gap-1 py-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 active:scale-90 transition-all border border-red-100"
+                disabled={u.email === 'admin@royal.com'}
+                className={`flex flex-col items-center justify-center gap-1 py-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 active:scale-90 transition-all border border-red-100 ${u.email === 'admin@royal.com' ? 'opacity-30 cursor-not-allowed grayscale' : ''}`}
               >
                 <Trash2 size={18} />
                 <span className="text-[9px] font-black uppercase">حذف</span>
