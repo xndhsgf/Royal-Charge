@@ -13,7 +13,8 @@ interface CartViewProps {
 const CartView: React.FC<CartViewProps> = ({ cartItems, setCartItems, onCheckout, appConfig }) => {
   const totalPrice = cartItems.reduce((sum, item) => sum + item.priceUSD, 0);
 
-  const removeItem = (id: number) => {
+  // Fix: Changed id type from number to string to match Product interface definition.
+  const removeItem = (id: string) => {
     setCartItems(prev => prev.filter(item => item.id !== id));
   };
 

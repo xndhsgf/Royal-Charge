@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { 
-  Home, Wallet, ShoppingBag, Users, CreditCard, LogOut, ChevronLeft, Heart, User, ShieldCheck, PlusCircle, Settings
+  Home, Wallet, ShoppingBag, Users, CreditCard, LogOut, ChevronLeft, Heart, User, ShieldCheck, PlusCircle, Settings, MessageCircle
 } from 'lucide-react';
 import { ViewType, UserState, AppConfig } from '../types';
 
@@ -19,7 +19,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
   const menuItems = [
     { id: 'home', label: 'الرئيسية', icon: <Home size={18} />, color: 'text-green-500' },
     { id: 'recharge', label: 'إضافة رصيد', icon: <CreditCard size={18} />, color: 'text-blue-400' },
-    { id: 'orders', label: 'دفعاتي', icon: <ShoppingBag size={18} />, color: 'text-sky-400' },
     { id: 'wallet', label: 'محفظتي', icon: <Wallet size={18} />, color: 'text-yellow-500' },
     { id: 'orders', label: 'طلباتي', icon: <ShoppingBag size={18} />, color: 'text-red-400' },
     { id: 'protection', label: 'الحماية', icon: <ShieldCheck size={18} />, color: 'text-green-400' },
@@ -28,6 +27,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
   if (user.isAdmin) {
     menuItems.push({ id: 'admin', label: 'لوحة التحكم', icon: <Settings size={18} />, color: 'text-indigo-600' });
   }
+
+  const handleWhatsApp = () => {
+    if (appConfig.whatsappNumber) {
+      const cleanNumber = appConfig.whatsappNumber.replace(/\+/g, '').replace(/\s/g, '');
+      window.open(`https://wa.me/${cleanNumber}`, '_blank');
+    } else {
+      alert('لم يتم تحديد رقم واتساب');
+    }
+  };
 
   return (
     <>
@@ -65,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
              </div>
 
              <div className="flex items-center gap-1 mb-1">
-                <h3 className="font-bold text-slate-800 text-sm group-hover:text-[#facc15] transition-colors">{user.name}</h3>
+                <h3 className="font-bold text-black text-sm group-hover:text-[#facc15] transition-colors">{user.name}</h3>
                 <span className="text-[10px] text-slate-400 font-bold">#{user.id}</span>
              </div>
            </div>
@@ -75,16 +83,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
               <span className="text-green-600 font-black text-2xl">${user.balanceUSD.toLocaleString()}</span>
            </div>
 
-           <button 
-             onClick={() => { setView('recharge'); onClose(); }}
-             className="w-full h-10 bg-slate-900 text-white rounded-xl font-black text-[11px] flex items-center justify-center gap-2 mb-6 shadow-md active:scale-95 transition-all"
-           >
-             <PlusCircle size={16} /> إضافة رصيد
-           </button>
+           <div className="grid grid-cols-2 gap-2 w-full mb-6">
+              <button 
+                onClick={() => { setView('recharge'); onClose(); }}
+                className="h-10 bg-black text-white rounded-xl font-black text-[10px] flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+              >
+                <PlusCircle size={14} /> شحن
+              </button>
+              <button 
+                onClick={handleWhatsApp}
+                className="h-10 bg-[#25D366] text-white rounded-xl font-black text-[10px] flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+              >
+                <MessageCircle size={14} /> واتساب
+              </button>
+           </div>
 
            <div className="flex justify-between w-full px-8 mb-4">
               <button className="text-red-500 hover:scale-110 transition-transform"><Heart size={24} /></button>
-              <button className="text-slate-800 hover:scale-110 transition-transform" onClick={() => { setView('profile_edit'); onClose(); }}><User size={24} /></button>
+              <button className="text-black hover:scale-110 transition-transform" onClick={() => { setView('profile_edit'); onClose(); }}><User size={24} /></button>
               <button className="text-red-600 hover:scale-110 transition-transform" onClick={onLogout} title="تسجيل الخروج">
                 <LogOut size={24} />
               </button>
@@ -99,11 +115,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
               className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors flex-row-reverse`}
             >
               <div className={item.color}>{item.icon}</div>
-              <span className="flex-1 text-right text-sm font-bold text-slate-700">{item.label}</span>
+              <span className="flex-1 text-right text-sm font-bold text-black">{item.label}</span>
             </button>
           ))}
           
-          {/* إضافة خيار تسجيل الخروج أيضاً في نهاية القائمة */}
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-4 px-6 py-4 hover:bg-red-50 transition-colors flex-row-reverse border-t border-slate-50 mt-2"

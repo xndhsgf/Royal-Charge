@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   collection, 
   doc, 
@@ -8,6 +8,8 @@ import {
   getDoc, 
   updateDoc, 
   addDoc, 
+  deleteDoc,
+  getDocs,
   query, 
   orderBy,
   where
@@ -29,7 +31,6 @@ import AdminView from './components/AdminView';
 import PurchaseModal from './components/PurchaseModal';
 import LoginView from './components/LoginView';
 import { ViewType, UserState, Order, Product, Category, AppConfig, RechargeMethod, Notification } from './types';
-import { CATEGORIES as DEFAULT_CATEGORIES, BANNERS as DEFAULT_BANNERS } from './constants';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('home');
@@ -43,62 +44,81 @@ const App: React.FC = () => {
     appName: 'ROYAL-CHARGE',
     usdToEgpRate: 50,
     globalUsdToCoinRate: 100,
+    diamondPriceUSD: 0.01,
     welcomeAnnouncement: 'مرحباً بك في ROYAL-CHARGE، منصة شحن الألعاب الأولى!',
-    banners: DEFAULT_BANNERS,
+    banners: [],
+    whatsappNumber: '', // القيمة الافتراضية
     themeColors: {
       primary: '#facc15',
       secondary: '#0f172a',
-      background: '#0000FF',
+      background: '#f8fafc',
       surface: '#ffffff',
-      text: '#ffffff'
+      text: '#000000'
     }
   });
 
   const [user, setUser] = useState<UserState | null>(() => {
     const saved = localStorage.getItem('royal_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const parsed = JSON.parse(saved);
+      return (parsed && parsed.email) ? parsed : null;
+    } catch {
+      return null;
+    }
   });
 
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [rechargeMethods, setRechargeMethods] = useState<RechargeMethod[]>(DEFAULT_METHODS);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [rechargeMethods, setRechargeMethods] = useState<RechargeMethod[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [allUsers, setAllUsers] = useState<UserState[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [cartItems, setCartItems] = useState<Product[]>([]);
 
-  // 1. مزامنة الإعدادات العامة
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "settings", "appConfig"), (docSnap) => {
+    const root = document.documentElement;
+    root.style.setProperty('--color-primary', appConfig.themeColors.primary);
+    root.style.setProperty('--color-secondary', appConfig.themeColors.secondary);
+    root.style.setProperty('--color-background', appConfig.themeColors.background);
+    root.style.setProperty('--color-surface', appConfig.themeColors.surface);
+    root.style.setProperty('--color-text', appConfig.themeColors.text);
+  }, [appConfig.themeColors]);
+
+  useEffect(() => {
+    const unsubConfig = onSnapshot(doc(db, "settings", "appConfig"), (docSnap) => {
       if (docSnap.exists()) {
         setAppConfig(docSnap.data() as AppConfig);
       }
     });
-    return () => unsub();
+    const unsubCats = onSnapshot(collection(db, "categories"), (snap) => {
+      setCategories(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Category)));
+    });
+    return () => { unsubConfig(); unsubCats(); };
   }, []);
 
-  // 2. مزامنة المنتجات والأقسام
   useEffect(() => {
     const unsubProds = onSnapshot(collection(db, "products"), (snap) => {
-      const prods: Product[] = [];
-      snap.forEach(doc => prods.push({ ...doc.data(), id: doc.id } as any));
-      setProducts(prods);
+      setProducts(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
     });
-    const unsubCats = onSnapshot(collection(db, "categories"), (snap) => {
-      const cats: Category[] = [];
-      snap.forEach(doc => cats.push({ ...doc.data(), id: doc.id } as any));
-      if (cats.length > 0) setCategories(cats);
+    const unsubMethods = onSnapshot(collection(db, "rechargeMethods"), (snap) => {
+      setRechargeMethods(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
     });
-    return () => { unsubProds(); unsubCats(); };
+    return () => { unsubProds(); unsubMethods(); };
   }, []);
 
-  // 3. مزامنة البيانات بناءً على هوية المستخدم
   useEffect(() => {
     if (!user || !user.email) return;
-
-    const unsubUser = onSnapshot(doc(db, "users", user.email), (docSnap) => {
+    const emailKey = user.email.toLowerCase().trim();
+    const unsubUser = onSnapshot(doc(db, "users", emailKey), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserState;
+        if (data.isBlocked) {
+          alert("تم حظر حسابك.");
+          setUser(null);
+          localStorage.removeItem('royal_user');
+          return;
+        }
         setUser(data);
         localStorage.setItem('royal_user', JSON.stringify(data));
       }
@@ -108,111 +128,56 @@ const App: React.FC = () => {
     if (user.isAdmin) {
       const q = query(collection(db, "orders"), orderBy("date", "desc"));
       unsubOrders = onSnapshot(q, (snap) => {
-        const ords: Order[] = [];
-        snap.forEach(doc => ords.push({ ...doc.data(), id: doc.id } as any));
-        setOrders(ords);
+        setOrders(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
       });
       onSnapshot(collection(db, "users"), (snap) => {
-        const usrs: UserState[] = [];
-        snap.forEach(doc => usrs.push(doc.data() as UserState));
-        setAllUsers(usrs);
+        setAllUsers(snap.docs.map(doc => doc.data() as UserState));
       });
     } else {
-      const q = query(collection(db, "orders"), where("userId", "==", user.email), orderBy("date", "desc"));
+      const q = query(collection(db, "orders"), where("userId", "==", emailKey), orderBy("date", "desc"));
       unsubOrders = onSnapshot(q, (snap) => {
-        const ords: Order[] = [];
-        snap.forEach(doc => ords.push({ ...doc.data(), id: doc.id } as any));
-        setOrders(ords);
+        setOrders(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
       });
     }
-
     return () => { unsubUser(); unsubOrders && unsubOrders(); };
   }, [user?.email, user?.isAdmin]);
 
-  const handleLogin = async (email: string, password: string, extraData?: Partial<UserState>, isSignup?: boolean) => {
-    try {
-      const userRef = doc(db, "users", email);
-      const userSnap = await getDoc(userRef);
-
-      const isAdminCredentials = email === 'admin@royal.com' && password === 'admin123456';
-
-      if (isSignup) {
-        if (userSnap.exists()) {
-          alert("البريد الإلكتروني مسجل مسبقاً");
-          return;
-        }
-        const newUser = {
-          name: extraData?.name || 'مستخدم جديد',
-          email: email,
-          id: Math.floor(1000 + Math.random() * 9000).toString(),
-          profilePic: extraData?.profilePic || 'https://picsum.photos/seed/user/200',
-          country: extraData?.country || 'مصر 🇪🇬',
-          balanceUSD: 0,
-          vip: 1,
-          isVerified: true,
-          theme: 'light',
-          isAdmin: isAdminCredentials,
-          password: password,
-          isBlocked: false,
-          isFrozen: false
-        };
-        await setDoc(userRef, newUser);
-        setUser(newUser as any);
-        localStorage.setItem('royal_user', JSON.stringify(newUser));
-      } else {
-        if (!userSnap.exists() && isAdminCredentials) {
-          const adminUser = {
-            name: 'المدير العام',
-            email: email,
-            id: 'ADMIN',
-            profilePic: 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png',
-            country: 'إدارة النظام ⚡',
-            balanceUSD: 1000000,
-            vip: 5,
-            isVerified: true,
-            theme: 'dark',
-            isAdmin: true,
-            password: password,
-            isBlocked: false,
-            isFrozen: false
-          };
-          await setDoc(userRef, adminUser);
-          setUser(adminUser as any);
-          localStorage.setItem('royal_user', JSON.stringify(adminUser));
-          return;
-        }
-
-        if (!userSnap.exists()) {
-          alert("الحساب غير موجود، يرجى إنشاء حساب أولاً");
-          return;
-        }
-
-        const userData = userSnap.data() as any;
-        if (userData.password !== password) {
-          alert("كلمة السر خاطئة");
-          return;
-        }
-
-        if (isAdminCredentials && !userData.isAdmin) {
-          await updateDoc(userRef, { isAdmin: true });
-          userData.isAdmin = true;
-        }
-
-        setUser(userData as UserState);
-        localStorage.setItem('royal_user', JSON.stringify(userData));
-      }
-    } catch (e) {
-      console.error(e);
-      alert("خطأ في قاعدة البيانات، يرجى المحاولة لاحقاً");
-    }
+  const handleUpdateProfile = async (updatedFields: Partial<UserState>) => {
+    if (!user?.email) return;
+    const emailKey = user.email.toLowerCase().trim();
+    await updateDoc(doc(db, "users", emailKey), updatedFields);
   };
 
-  const handleLogout = () => {
-    if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-      setUser(null);
-      localStorage.removeItem('royal_user');
-      setIsSidebarOpen(false);
-      setCurrentView('home');
+  const handleLogin = async (email: string, password: string, extraData?: Partial<UserState>, isSignup?: boolean) => {
+    const cleanEmail = email?.toLowerCase()?.trim();
+    const userRef = doc(db, "users", cleanEmail);
+    const userSnap = await getDoc(userRef);
+
+    if (isSignup) {
+      if (userSnap.exists()) {
+        alert("مسجل مسبقاً");
+        return;
+      }
+      const newUser: UserState = {
+        name: extraData?.name || 'مستخدم', email: cleanEmail, password,
+        id: Math.floor(1000 + Math.random() * 9000).toString(),
+        profilePic: extraData?.profilePic || '', country: extraData?.country || 'مصر 🇪🇬',
+        balanceUSD: 0, vip: 1, isVerified: true, theme: 'light',
+        isAdmin: cleanEmail === 'admin@royal.com', isBlocked: false, isFrozen: false
+      };
+      await setDoc(userRef, newUser);
+      setUser(newUser);
+    } else {
+      if (!userSnap.exists()) {
+        alert("غير موجود");
+        return;
+      }
+      const userData = userSnap.data() as UserState;
+      if (userData.password !== password) {
+        alert("كلمة السر خطأ");
+        return;
+      }
+      setUser(userData);
     }
   };
 
@@ -224,95 +189,89 @@ const App: React.FC = () => {
       return false;
     }
 
-    try {
-      await updateDoc(doc(db, "users", user.email), { balanceUSD: user.balanceUSD - finalPrice });
-      await addDoc(collection(db, "orders"), {
-        productName: product.name,
-        priceUSD: finalPrice,
-        priceEGP: finalPrice * appConfig.usdToEgpRate,
-        coinsAmount: coins || product.amount,
-        date: new Date().toISOString(),
-        status: 'pending',
-        playerId: idValue,
-        userId: user.email,
-        type: 'product'
-      });
-      alert('تم إرسال الطلب');
-      return true;
-    } catch (e) { return false; }
-  };
-
-  const handleRechargeRequest = async (amount: number, sender: string, pId: string, img?: string) => {
-    if (!user) return;
+    await updateDoc(doc(db, "users", user.email), { balanceUSD: user.balanceUSD - finalPrice });
     await addDoc(collection(db, "orders"), {
-      productName: 'إيداع رصيد',
-      priceUSD: amount,
-      priceEGP: amount * appConfig.usdToEgpRate,
-      date: new Date().toISOString(),
-      status: 'pending',
-      type: 'recharge',
-      userId: user.email,
-      playerId: pId,
-      screenshot: img || null,
-      details: { senderName: sender }
+      productName: product.name, priceUSD: finalPrice, priceEGP: finalPrice * appConfig.usdToEgpRate,
+      coinsAmount: coins || product.amount, date: new Date().toISOString(), status: 'pending',
+      playerId: idValue, userId: user.email, type: 'product'
     });
-    alert('طلب الشحن قيد المراجعة');
-    setCurrentView('home');
+    alert('تم الطلب بنجاح ✅');
+    return true;
   };
 
-  const onAdminUpdateOrder = async (orderId: string, status: 'completed' | 'rejected', reply: string) => {
-    const orderRef = doc(db, "orders", orderId);
-    const orderSnap = await getDoc(orderRef);
-    if (!orderSnap.exists()) return;
-    const orderData = orderSnap.data() as Order;
-    
-    await updateDoc(orderRef, { status, adminReply: reply });
+  const handleDeleteAllOrders = async () => {
+    if (!confirm('⚠️ تحذير نهائي: هل أنت متأكد من حذف كافة الطلبات من السجل تماماً؟ لا يمكن استرجاع البيانات بعد الحذف.')) return;
+    if (!confirm('هل أنت متأكد حقاً؟ سيتم تصفير قائمة الطلبات لجميع المستخدمين.')) return;
 
-    if (status === 'completed' && orderData.type === 'recharge') {
-      const uRef = doc(db, "users", orderData.userId);
-      const uSnap = await getDoc(uRef);
-      if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
-    } else if (status === 'rejected' && orderData.type === 'product') {
-      const uRef = doc(db, "users", orderData.userId);
-      const uSnap = await getDoc(uRef);
-      if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
+    try {
+      const ordersSnap = await getDocs(collection(db, "orders"));
+      const deletePromises = ordersSnap.docs.map(d => deleteDoc(doc(db, "orders", d.id)));
+      await Promise.all(deletePromises);
+      alert('تم حذف جميع الطلبات بنجاح ✅');
+    } catch (error) {
+      console.error(error);
+      alert('حدث خطأ أثناء محاولة الحذف.');
     }
   };
 
-  if (!user) {
-    return <LoginView onLogin={handleLogin} appName={appConfig.appName} logoUrl={appConfig.logoUrl} />;
-  }
+  if (!user) return <LoginView onLogin={handleLogin} appName={appConfig.appName} logoUrl={appConfig.logoUrl} />;
+
+  const mainContainerStyle: React.CSSProperties = {
+    backgroundColor: appConfig.backgroundUrl ? 'transparent' : 'var(--color-background)',
+    backgroundImage: appConfig.backgroundUrl ? `url(${appConfig.backgroundUrl})` : 'none',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundAttachment: 'fixed',
+    color: 'var(--color-text)'
+  };
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full max-w-[500px] mx-auto relative overflow-hidden font-['Cairo'] shadow-2xl" style={{ backgroundColor: 'var(--color-background)', color: 'var(--color-text)', paddingTop: 'var(--safe-top)', paddingBottom: 'var(--safe-bottom)' }}>
+    <div className="flex flex-col h-[100dvh] w-full max-w-[500px] mx-auto relative overflow-hidden font-['Cairo'] shadow-2xl transition-all" style={mainContainerStyle}>
+      {appConfig.backgroundUrl && currentView !== 'admin' && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] pointer-events-none -z-10"></div>
+      )}
+
       {currentView !== 'admin' && <Header onMenuClick={() => setIsSidebarOpen(true)} currentView={currentView} onBack={() => setCurrentView('home')} appConfig={appConfig} />}
-      <main className="flex-1 overflow-y-auto no-scrollbar w-full relative">
+      
+      <main className="flex-1 overflow-y-auto no-scrollbar w-full relative z-10">
         {currentView === 'home' && <HomeView user={user} appConfig={appConfig} onPurchase={handlePurchase} products={products} banners={appConfig.banners} categories={categories} />}
         {currentView === 'wallet' && <WalletView user={user} orders={orders} appConfig={appConfig} />}
         {currentView === 'orders' && <OrdersView orders={orders} />}
         {currentView === 'notifications' && <NotificationsView notifications={notifications} />}
         {currentView === 'recharge' && <RechargeView rechargeMethods={rechargeMethods} onSelectMethod={(m) => { setSelectedRechargeMethod(m); setCurrentView('recharge_details'); }} />}
-        {currentView === 'recharge_details' && selectedRechargeMethod && <RechargeDetailsView method={selectedRechargeMethod} onConfirm={handleRechargeRequest} />}
+        {currentView === 'recharge_details' && selectedRechargeMethod && <RechargeDetailsView method={selectedRechargeMethod} onConfirm={async (amt, sender, pId, img) => {
+           await addDoc(collection(db, "orders"), { productName: 'إيداع', priceUSD: amt, date: new Date().toISOString(), status: 'pending', type: 'recharge', userId: user.email, playerId: pId, screenshot: img });
+           alert('قيد المراجعة ✅'); setCurrentView('home');
+        }} />}
         {currentView === 'search' && <SearchView products={products} onPurchase={handlePurchase} appConfig={appConfig} />}
         {currentView === 'cart' && <CartView cartItems={cartItems} setCartItems={setCartItems} onCheckout={(p) => { setSelectedProductForPurchase(p); setIsPurchaseModalOpen(true); }} appConfig={appConfig} />}
-        {currentView === 'profile_edit' && <ProfileEditView user={user} setUser={(u) => updateDoc(doc(db, "users", user.email), u)} onBack={() => setCurrentView('home')} />}
+        {currentView === 'profile_edit' && <ProfileEditView user={user} appConfig={appConfig} setUser={handleUpdateProfile} onBack={() => setCurrentView('home')} />}
         {currentView === 'admin' && (
            <AdminView 
-             products={products} setProducts={() => {}} 
-             categories={categories} setCategories={() => {}}
-             rechargeMethods={rechargeMethods} setRechargeMethods={() => {}}
-             orders={orders} setOrders={() => {}}
-             allUsers={allUsers} setAllUsers={() => {}}
-             currentUser={user} setCurrentUser={setUser}
-             appConfig={appConfig} setAppConfig={(cfg) => setDoc(doc(db, "settings", "appConfig"), cfg)}
+             products={products} setProducts={async (id, data) => id ? updateDoc(doc(db, "products", id), data) : addDoc(collection(db, "products"), data)} deleteProduct={id => deleteDoc(doc(db, "products", id))}
+             categories={categories} addCategory={data => addDoc(collection(db, "categories"), data)} deleteCategory={id => deleteDoc(doc(db, "categories", id))}
+             rechargeMethods={rechargeMethods} setRechargeMethod={async (id, data) => id ? updateDoc(doc(db, "rechargeMethods", id), data) : addDoc(collection(db, "rechargeMethods"), data)} deleteRechargeMethod={id => deleteDoc(doc(db, "rechargeMethods", id))}
+             orders={orders} allUsers={allUsers} 
+             updateAnyUser={(email, data) => updateDoc(doc(db, "users", email), data)} deleteAnyUser={email => deleteDoc(doc(db, "users", email))}
+             appConfig={appConfig} setAppConfig={cfg => updateDoc(doc(db, "settings", "appConfig"), cfg as any)}
              onBack={() => setCurrentView('home')}
-             onUpdateOrder={onAdminUpdateOrder}
+             onDeleteAllOrders={handleDeleteAllOrders}
+             onUpdateOrder={async (id, status, reply) => {
+                const orderRef = doc(db, "orders", id);
+                const oData = (await getDoc(orderRef)).data() as Order;
+                await updateDoc(orderRef, { status, adminReply: reply });
+                if (status === 'completed' && oData.type === 'recharge') {
+                  const uRef = doc(db, "users", oData.userId);
+                  const uSnap = await getDoc(uRef);
+                  if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + oData.priceUSD });
+                }
+             }}
            />
         )}
       </main>
+      
       {currentView !== 'admin' && <div className="shrink-0 z-50"><BottomNav currentView={currentView} onViewChange={setCurrentView} /></div>}
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} setView={setCurrentView} user={user} setUser={() => {}} appConfig={appConfig} onLogout={handleLogout} />
-      {isPurchaseModalOpen && selectedProductForPurchase && <PurchaseModal isOpen={isPurchaseModalOpen} product={selectedProductForPurchase} appConfig={appConfig} onClose={() => { setIsPurchaseModalOpen(false); setSelectedProductForPurchase(null); }} onConfirm={handlePurchase} />}
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} setView={setCurrentView} user={user} setUser={() => {}} appConfig={appConfig} onLogout={() => { setUser(null); localStorage.removeItem('royal_user'); }} />
     </div>
   );
 };

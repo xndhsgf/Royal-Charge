@@ -3,19 +3,19 @@ export type ViewType = 'home' | 'wallet' | 'orders' | 'notifications' | 'search'
 export type ThemeType = 'light' | 'dark';
 
 export interface Category {
-  id: number;
+  id: string;
   title: string;
   image: string;
 }
 
 export interface Banner {
-  id: number;
+  id: string;
   url: string;
   title: string;
 }
 
 export interface Product {
-  id: number;
+  id: string;
   name: string;
   priceUSD: number;
   priceEGP: number;
@@ -23,7 +23,7 @@ export interface Product {
   amount: number;
   image: string;
   color: string;
-  categoryId: number;
+  categoryId: string;
   isCustomAmount?: boolean;
 }
 
@@ -44,7 +44,7 @@ export interface Order {
 }
 
 export interface RechargeMethod {
-  id: number;
+  id: string;
   label: string;
   icon: string;
   color: string;
@@ -65,6 +65,8 @@ export interface Notification {
 
 export interface UserState {
   name: string;
+  email: string;
+  password?: string;
   id: string;
   serialId?: number;
   vip: number;
@@ -75,7 +77,6 @@ export interface UserState {
   theme: ThemeType;
   isAdmin?: boolean;
   isBlocked?: boolean;
-  blockedUntil?: string;
   isFrozen?: boolean;
 }
 
@@ -89,10 +90,13 @@ export interface ThemeColors {
 
 export interface AppConfig {
   logoUrl: string;
+  backgroundUrl?: string;
   appName: string;
   usdToEgpRate: number;
-  globalUsdToCoinRate: number; // إضافة معدل الكوينز العالمي
+  globalUsdToCoinRate: number;
+  diamondPriceUSD: number;
   welcomeAnnouncement: string;
   banners: Banner[];
   themeColors: ThemeColors;
+  whatsappNumber?: string; // الحقل الجديد للواتساب
 }

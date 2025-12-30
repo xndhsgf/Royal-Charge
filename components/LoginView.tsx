@@ -9,6 +9,35 @@ interface LoginViewProps {
   logoUrl: string;
 }
 
+const compressImage = (base64Str: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const MAX_SIZE = 400;
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        }
+      } else {
+        if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+  });
+};
+
 const LoginView: React.FC<LoginViewProps> = ({ onLogin, appName, logoUrl }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -30,7 +59,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, appName, logoUrl }) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => setProfilePic(reader.result as string);
+      reader.onloadend = async () => {
+        const compressed = await compressImage(reader.result as string);
+        setProfilePic(compressed);
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -38,7 +70,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, appName, logoUrl }) => {
   const handleSubmit = async () => {
     if (isLoading) return;
     
-    const cleanEmail = email.toLowerCase().trim();
+    const cleanEmail = email?.toLowerCase()?.trim();
     
     if (!cleanEmail || !cleanEmail.includes('@')) {
       alert('يرجى إدخال بريد إلكتروني صحيح');
@@ -74,7 +106,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, appName, logoUrl }) => {
 
   return (
     <div className="min-h-[100dvh] w-full bg-[#0000FF] flex flex-col items-center justify-start overflow-y-auto no-scrollbar py-10 px-6 rtl font-['Cairo'] relative" dir="rtl">
-      {/* Background Orbs */}
       <div className="fixed top-[-5%] right-[-5%] w-80 h-80 bg-yellow-400/20 rounded-full blur-[80px] pointer-events-none"></div>
       <div className="fixed bottom-[-5%] left-[-5%] w-80 h-80 bg-red-600/20 rounded-full blur-[80px] pointer-events-none"></div>
 

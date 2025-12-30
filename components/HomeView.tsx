@@ -17,7 +17,7 @@ const HomeView: React.FC<HomeViewProps> = ({ user, appConfig, onPurchase, produc
   const [currentBanner, setCurrentBanner] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(categories[0]?.id || null);
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(categories[0]?.id || null);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -32,7 +32,7 @@ const HomeView: React.FC<HomeViewProps> = ({ user, appConfig, onPurchase, produc
   const activeCategory = categories.find(c => c.id === activeCategoryId);
 
   return (
-    <div className="pb-32 animate-in fade-in duration-500 min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="pb-32 animate-in fade-in duration-500 min-h-screen bg-transparent">
       {/* الإعلان الترحيبي */}
       <div className="bg-[#fbbf24] px-4 py-3 flex items-center justify-between text-white font-bold text-[11px] shadow-sm">
         <div className="flex items-center gap-2 overflow-hidden flex-row-reverse w-full">
@@ -86,7 +86,7 @@ const HomeView: React.FC<HomeViewProps> = ({ user, appConfig, onPurchase, produc
         </div>
       </div>
 
-      {/* عرض المنتجات - تصميم 4 أعمدة احترافي */}
+      {/* عرض المنتجات */}
       <div className="px-4 mt-6">
         <div className="flex items-center justify-between mb-4 px-1">
            <div className="flex flex-col items-end">
@@ -104,16 +104,13 @@ const HomeView: React.FC<HomeViewProps> = ({ user, appConfig, onPurchase, produc
                 onClick={() => { setSelectedProduct(product); setTimeout(() => setIsModalOpen(true), 10); }}
                 className="relative group cursor-pointer active:scale-90 transition-all duration-300"
               >
-                {/* حاوية الصورة المربعة بحواف دائرية */}
                 <div className="w-full aspect-square rounded-[1.2rem] overflow-hidden shadow-lg relative border border-white/5 bg-slate-800">
                     <img 
                       src={product.image} 
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
                       alt={product.name} 
                     />
-                    
-                    {/* طبقة شفافة سفلية للاسم (Glassmorphism) */}
-                    <div className="absolute bottom-1 inset-x-1 bg-black/30 backdrop-blur-md rounded-[0.8rem] py-1 px-1 border border-white/10">
+                    <div className="absolute bottom-1 inset-x-1 bg-black/40 backdrop-blur-md rounded-[0.8rem] py-1 px-1 border border-white/10">
                         <p className="text-[7px] font-black text-white text-center truncate uppercase tracking-tighter">
                           {product.name}
                         </p>
