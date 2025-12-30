@@ -65,8 +65,6 @@ export interface Notification {
 
 export interface UserState {
   name: string;
-  email: string; // تم الإضافة
-  password?: string; // تم الإضافة للتحقق المحلي
   id: string;
   serialId?: number;
   vip: number;
@@ -93,7 +91,7 @@ export interface AppConfig {
   logoUrl: string;
   appName: string;
   usdToEgpRate: number;
-  globalUsdToCoinRate: number;
+  globalUsdToCoinRate: number; // إضافة معدل الكوينز العالمي
   welcomeAnnouncement: string;
   banners: Banner[];
   themeColors: ThemeColors;

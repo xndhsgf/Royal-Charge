@@ -57,13 +57,7 @@ const App: React.FC = () => {
 
   const [user, setUser] = useState<UserState | null>(() => {
     const saved = localStorage.getItem('royal_user');
-    if (!saved) return null;
-    try {
-      const parsed = JSON.parse(saved);
-      return parsed.email ? parsed : null;
-    } catch {
-      return null;
-    }
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -97,23 +91,16 @@ const App: React.FC = () => {
     return () => { unsubProds(); unsubCats(); unsubMethods(); };
   }, []);
 
-  // مزامنة بيانات المستخدم والطلبات بشكل حي من Firestore
+  // مزامنة بيانات المستخدم والطلبات
   useEffect(() => {
     if (!user?.email) return;
 
-    const emailKey = user.email.toLowerCase().trim();
-    const unsubUser = onSnapshot(doc(db, "users", emailKey), (docSnap) => {
+    const unsubUser = onSnapshot(doc(db, "users", user.email.toLowerCase()), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as UserState;
-        setUser(prev => {
-          // فقط قم بالتحديث إذا كانت البيانات مختلفة لتقليل الريندر
-          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
-          localStorage.setItem('royal_user', JSON.stringify(data));
-          return data;
-        });
+        setUser(data);
+        localStorage.setItem('royal_user', JSON.stringify(data));
       }
-    }, (error) => {
-      console.error("User Sync Error:", error);
     });
 
     let unsubOrders: () => void;
@@ -126,7 +113,7 @@ const App: React.FC = () => {
         setAllUsers(snap.docs.map(doc => doc.data() as UserState));
       });
     } else {
-      const q = query(collection(db, "orders"), where("userId", "==", emailKey), orderBy("date", "desc"));
+      const q = query(collection(db, "orders"), where("userId", "==", user.email.toLowerCase()), orderBy("date", "desc"));
       unsubOrders = onSnapshot(q, (snap) => {
         setOrders(snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as any)));
       });
@@ -135,32 +122,8 @@ const App: React.FC = () => {
     return () => { unsubUser(); unsubOrders && unsubOrders(); };
   }, [user?.email, user?.isAdmin]);
 
-  // دالة لتحديث بيانات المستخدم محلياً وفي قاعدة البيانات فوراً
-  const handleUpdateProfile = async (updatedFields: Partial<UserState>) => {
-    if (!user?.email) return;
-    const emailKey = user.email.toLowerCase().trim();
-    
-    // 1. التحديث المحلي الفوري (Optimistic Update)
-    const updatedUser = { ...user, ...updatedFields };
-    setUser(updatedUser);
-    localStorage.setItem('royal_user', JSON.stringify(updatedUser));
-
-    // 2. التحديث في قاعدة البيانات في الخلفية
-    try {
-      await updateDoc(doc(db, "users", emailKey), updatedFields);
-    } catch (e) {
-      console.error("Profile Update Error:", e);
-      // في حال الفشل، Firestore onSnapshot سيعيد الحالة القديمة تلقائياً
-    }
-  };
-
   const handleLogin = async (email: string, password: string, extraData?: Partial<UserState>, isSignup?: boolean) => {
     const cleanEmail = email.toLowerCase().trim();
-    if (!cleanEmail) {
-      alert("يرجى إدخال البريد الإلكتروني");
-      return;
-    }
-    
     const isAdminCredentials = cleanEmail === 'admin@royal.com' && password === 'admin123456';
     const userRef = doc(db, "users", cleanEmail);
 
@@ -169,13 +132,12 @@ const App: React.FC = () => {
       
       if (isSignup) {
         if (userSnap.exists()) {
-          alert("هذا البريد الإلكتروني مسجل بالفعل. جرب تسجيل الدخول.");
+          alert("البريد الإلكتروني مسجل مسبقاً");
           return;
         }
-        const newUser: UserState = {
+        const newUser = {
           name: extraData?.name || 'مستخدم جديد',
           email: cleanEmail,
-          password: password,
           id: Math.floor(1000 + Math.random() * 9000).toString(),
           profilePic: extraData?.profilePic || 'https://picsum.photos/seed/user/200',
           country: extraData?.country || 'مصر 🇪🇬',
@@ -184,19 +146,19 @@ const App: React.FC = () => {
           isVerified: true,
           theme: 'light',
           isAdmin: isAdminCredentials,
+          password: password,
           isBlocked: false,
           isFrozen: false
         };
         await setDoc(userRef, newUser);
-        setUser(newUser);
+        setUser(newUser as any);
         localStorage.setItem('royal_user', JSON.stringify(newUser));
-        alert("تم إنشاء الحساب بنجاح! 🎉");
       } else {
+        // حالة خاصة لإنشاء حساب المدير إذا لم يكن موجوداً
         if (!userSnap.exists() && isAdminCredentials) {
-          const adminUser: UserState = {
+          const adminUser = {
             name: 'المدير العام',
             email: cleanEmail,
-            password: password,
             id: 'ADMIN',
             profilePic: 'https://cdn-icons-png.flaticon.com/512/6024/6024190.png',
             country: 'إدارة النظام ⚡',
@@ -205,37 +167,39 @@ const App: React.FC = () => {
             isVerified: true,
             theme: 'dark',
             isAdmin: true,
+            password: password,
             isBlocked: false,
             isFrozen: false
           };
           await setDoc(userRef, adminUser);
-          setUser(adminUser);
+          setUser(adminUser as any);
           localStorage.setItem('royal_user', JSON.stringify(adminUser));
           return;
         }
 
         if (!userSnap.exists()) {
-          alert("عذراً، هذا الحساب غير موجود. يرجى إنشاء حساب أولاً.");
+          alert("الحساب غير موجود، يرجى إنشاء حساب أولاً");
           return;
         }
 
-        const userData = userSnap.data() as UserState;
+        const userData = userSnap.data() as any;
         if (userData.password !== password) {
-          alert("كلمة السر غير صحيحة. يرجى المحاولة مرة أخرى.");
+          alert("كلمة السر خاطئة");
           return;
         }
 
+        // تحديث حالة الأدمن إذا لزم الأمر
         if (isAdminCredentials && !userData.isAdmin) {
           await updateDoc(userRef, { isAdmin: true });
           userData.isAdmin = true;
         }
 
-        setUser(userData);
+        setUser(userData as UserState);
         localStorage.setItem('royal_user', JSON.stringify(userData));
       }
     } catch (e) {
-      console.error("Database Access Error:", e);
-      alert("خطأ في الاتصال بقاعدة البيانات.");
+      console.error("Login Error:", e);
+      alert("فشل الاتصال بقاعدة البيانات. تأكد من الإنترنت.");
     }
   };
 
@@ -249,7 +213,7 @@ const App: React.FC = () => {
   }, []);
 
   const handlePurchase = async (product: Product, idValue: string, customPriceUSD?: number, coins?: number) => {
-    if (!user?.email) return false;
+    if (!user) return false;
     const finalPrice = customPriceUSD || product.priceUSD;
     if (user.balanceUSD < finalPrice) {
       alert('رصيدك غير كافٍ');
@@ -257,8 +221,7 @@ const App: React.FC = () => {
     }
 
     try {
-      const emailKey = user.email.toLowerCase().trim();
-      await updateDoc(doc(db, "users", emailKey), { balanceUSD: user.balanceUSD - finalPrice });
+      await updateDoc(doc(db, "users", user.email.toLowerCase()), { balanceUSD: user.balanceUSD - finalPrice });
       await addDoc(collection(db, "orders"), {
         productName: product.name,
         priceUSD: finalPrice,
@@ -267,60 +230,48 @@ const App: React.FC = () => {
         date: new Date().toISOString(),
         status: 'pending',
         playerId: idValue,
-        userId: emailKey,
+        userId: user.email.toLowerCase(),
         type: 'product'
       });
-      alert('تم إرسال طلب الشحن بنجاح! سيتم التنفيذ قريباً.');
+      alert('تم إرسال الطلب');
       return true;
-    } catch (e) { 
-      console.error("Purchase Error:", e);
-      return false; 
-    }
+    } catch (e) { return false; }
   };
 
   const handleRechargeRequest = async (amount: number, sender: string, pId: string, img?: string) => {
-    if (!user?.email) return;
-    try {
-      const emailKey = user.email.toLowerCase().trim();
-      await addDoc(collection(db, "orders"), {
-        productName: 'إيداع رصيد',
-        priceUSD: amount,
-        priceEGP: amount * appConfig.usdToEgpRate,
-        date: new Date().toISOString(),
-        status: 'pending',
-        type: 'recharge',
-        userId: emailKey,
-        playerId: pId,
-        screenshot: img || null,
-        details: { senderName: sender }
-      });
-      alert('طلب الشحن قيد المراجعة. سيتم إضافة الرصيد فور التأكد.');
-      setCurrentView('home');
-    } catch (e) {
-      console.error("Recharge Request Error:", e);
-    }
+    if (!user) return;
+    await addDoc(collection(db, "orders"), {
+      productName: 'إيداع رصيد',
+      priceUSD: amount,
+      priceEGP: amount * appConfig.usdToEgpRate,
+      date: new Date().toISOString(),
+      status: 'pending',
+      type: 'recharge',
+      userId: user.email.toLowerCase(),
+      playerId: pId,
+      screenshot: img || null,
+      details: { senderName: sender }
+    });
+    alert('طلب الشحن قيد المراجعة');
+    setCurrentView('home');
   };
 
   const onAdminUpdateOrder = async (orderId: string, status: 'completed' | 'rejected', reply: string) => {
-    try {
-      const orderRef = doc(db, "orders", orderId);
-      const orderSnap = await getDoc(orderRef);
-      if (!orderSnap.exists()) return;
-      const orderData = orderSnap.data() as Order;
-      
-      await updateDoc(orderRef, { status, adminReply: reply });
+    const orderRef = doc(db, "orders", orderId);
+    const orderSnap = await getDoc(orderRef);
+    if (!orderSnap.exists()) return;
+    const orderData = orderSnap.data() as Order;
+    
+    await updateDoc(orderRef, { status, adminReply: reply });
 
-      if (status === 'completed' && orderData.type === 'recharge') {
-        const uRef = doc(db, "users", orderData.userId.toLowerCase());
-        const uSnap = await getDoc(uRef);
-        if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
-      } else if (status === 'rejected' && orderData.type === 'product') {
-        const uRef = doc(db, "users", orderData.userId.toLowerCase());
-        const uSnap = await getDoc(uRef);
-        if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
-      }
-    } catch (e) {
-      console.error("Admin Update Error:", e);
+    if (status === 'completed' && orderData.type === 'recharge') {
+      const uRef = doc(db, "users", orderData.userId.toLowerCase());
+      const uSnap = await getDoc(uRef);
+      if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
+    } else if (status === 'rejected' && orderData.type === 'product') {
+      const uRef = doc(db, "users", orderData.userId.toLowerCase());
+      const uSnap = await getDoc(uRef);
+      if (uSnap.exists()) await updateDoc(uRef, { balanceUSD: uSnap.data().balanceUSD + orderData.priceUSD });
     }
   };
 
@@ -333,8 +284,8 @@ const App: React.FC = () => {
   const deleteCategory = async (id: any) => await deleteDoc(doc(db, "categories", id));
   const addRechargeMethod = async (data: any) => await addDoc(collection(db, "rechargeMethods"), data);
   const deleteRechargeMethod = async (id: any) => await deleteDoc(doc(db, "rechargeMethods", id));
-  const updateAnyUser = async (email: string, data: any) => await updateDoc(doc(db, "users", email.toLowerCase().trim()), data);
-  const deleteAnyUser = async (email: string) => await deleteDoc(doc(db, "users", email.toLowerCase().trim()));
+  const updateAnyUser = async (email: string, data: any) => await updateDoc(doc(db, "users", email.toLowerCase()), data);
+  const deleteAnyUser = async (email: string) => await deleteDoc(doc(db, "users", email.toLowerCase()));
 
   if (!user) {
     return <LoginView onLogin={handleLogin} appName={appConfig.appName} logoUrl={appConfig.logoUrl} />;
@@ -352,7 +303,7 @@ const App: React.FC = () => {
         {currentView === 'recharge_details' && selectedRechargeMethod && <RechargeDetailsView method={selectedRechargeMethod} onConfirm={handleRechargeRequest} />}
         {currentView === 'search' && <SearchView products={products} onPurchase={handlePurchase} appConfig={appConfig} />}
         {currentView === 'cart' && <CartView cartItems={cartItems} setCartItems={setCartItems} onCheckout={(p) => { setSelectedProductForPurchase(p); setIsPurchaseModalOpen(true); }} appConfig={appConfig} />}
-        {currentView === 'profile_edit' && <ProfileEditView user={user} setUser={handleUpdateProfile} onBack={() => setCurrentView('home')} />}
+        {currentView === 'profile_edit' && <ProfileEditView user={user} setUser={(u) => updateDoc(doc(db, "users", user.email.toLowerCase()), u)} onBack={() => setCurrentView('home')} />}
         {currentView === 'admin' && (
            <AdminView 
              products={products} setProducts={updateProduct as any} deleteProduct={deleteProduct}
