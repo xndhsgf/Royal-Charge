@@ -243,7 +243,7 @@ const App: React.FC = () => {
            await addDoc(collection(db, "orders"), { productName: 'إيداع', priceUSD: amt, date: new Date().toISOString(), status: 'pending', type: 'recharge', userId: user.email, playerId: pId, screenshot: img });
            alert('قيد المراجعة ✅'); setCurrentView('home');
         }} />}
-        {currentView === 'search' && <SearchView products={products} onPurchase={handlePurchase} appConfig={appConfig} />}
+        {currentView === 'search' && <SearchView products={products} onPurchase={handlePurchase} appConfig={appConfig} user={user} />}
         {currentView === 'cart' && <CartView cartItems={cartItems} setCartItems={setCartItems} onCheckout={(p) => { setSelectedProductForPurchase(p); setIsPurchaseModalOpen(true); }} appConfig={appConfig} />}
         {currentView === 'profile_edit' && <ProfileEditView user={user} appConfig={appConfig} setUser={handleUpdateProfile} onBack={() => setCurrentView('home')} />}
         {currentView === 'admin' && (
@@ -269,6 +269,20 @@ const App: React.FC = () => {
            />
         )}
       </main>
+
+      {isPurchaseModalOpen && selectedProductForPurchase && (
+        <PurchaseModal 
+          isOpen={isPurchaseModalOpen} 
+          product={selectedProductForPurchase} 
+          appConfig={appConfig}
+          userBalance={user.balanceUSD}
+          onClose={() => {
+            setIsPurchaseModalOpen(false);
+            setSelectedProductForPurchase(null);
+          }} 
+          onConfirm={handlePurchase} 
+        />
+      )}
       
       {currentView !== 'admin' && <div className="shrink-0 z-50"><BottomNav currentView={currentView} onViewChange={setCurrentView} /></div>}
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} setView={setCurrentView} user={user} setUser={() => {}} appConfig={appConfig} onLogout={() => { setUser(null); localStorage.removeItem('royal_user'); }} />
