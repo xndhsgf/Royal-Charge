@@ -46,8 +46,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, setView, user, setUs
       <div className={`fixed top-0 right-0 h-full w-[80%] max-w-[320px] bg-white z-[110] transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'} overflow-y-auto`}>
         <div className="p-6 flex flex-col items-center border-b border-slate-100">
            <div className="w-full flex justify-between items-center mb-6">
-             <div className="w-12 h-12">
-                <img src={appConfig.logoUrl} alt="App Logo" className="w-full h-full object-contain" />
+             <div className="w-14 h-14 rounded-full overflow-hidden border border-slate-100 shadow-sm">
+                <img src={appConfig.logoUrl} alt="App Logo" className="w-full h-full object-cover" />
              </div>
              <button onClick={onClose} className="p-1 text-slate-300">
                <ChevronLeft size={28} />
